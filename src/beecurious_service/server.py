@@ -1,0 +1,138 @@
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import logging
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+from beecurious_service.config import Settings, load_dotenv
+from beecurious_service.providers import create_provider
+from beecurious_service.sessions import SessionStore
+
+
+LOG = logging.getLogger(__name__)
+
+
+class BeeCuriousRequestHandler(BaseHTTPRequestHandler):
+    """HTTP handler for health checks and agent session requests."""
+    store: SessionStore
+
+    def do_GET(self) -> None:
+        if urlparse(self.path).path == "/health":
+            self._write_json(HTTPStatus.OK, {"status": "ok"})
+            return
+        self._write_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
+
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path
+        try:
+            payload = self._read_json()
+            if path == "/v1/sessions":
+                session = self.store.create()
+                self._write_json(
+                    HTTPStatus.CREATED,
+                    {"session_id": session.session_id, "agent_name": "Bip Buzzley"},
+                )
+                return
+
+            session_id = self._event_session_id(path)
+            if session_id:
+                session = self.store.get(session_id)
+                if session is None:
+                    self._write_json(HTTPStatus.NOT_FOUND, {"error": "session_not_found"})
+                    return
+                self._write_json(HTTPStatus.OK, session.handle_event(payload))
+                return
+
+            self._write_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
+        except (json.JSONDecodeError, ValueError) as exc:
+            LOG.warning("Rejected POST %s: %s", path, exc)
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+        except Exception:
+            LOG.exception("Request failed")
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": "agent_request_failed"},
+            )
+
+    def do_DELETE(self) -> None:
+        path_parts = urlparse(self.path).path.strip("/").split("/")
+        if len(path_parts) == 3 and path_parts[:2] == ["v1", "sessions"]:
+            deleted = self.store.delete(path_parts[2])
+            status = HTTPStatus.NO_CONTENT if deleted else HTTPStatus.NOT_FOUND
+            self.send_response(status)
+            self.end_headers()
+            return
+        self._write_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
+
+    def log_message(self, format_string: str, *args: Any) -> None:
+        LOG.info("%s - %s", self.address_string(), format_string % args)
+
+    def _read_json(self) -> dict[str, Any]:
+        content_length = int(self.headers.get("Content-Length", "0"))
+        if content_length == 0:
+            return {}
+        payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("request body must be an object")
+        return payload
+
+    def _write_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    @staticmethod
+    def _event_session_id(path: str) -> str | None:
+        path_parts = path.strip("/").split("/")
+        if len(path_parts) == 4 and path_parts[:2] == ["v1", "sessions"]:
+            if path_parts[3] == "events":
+                return path_parts[2]
+        return None
+
+
+def create_server(settings: Settings) -> ThreadingHTTPServer:
+    """Create a configured BeeCurious HTTP server."""
+    provider = create_provider(settings)
+    BeeCuriousRequestHandler.store = SessionStore(provider)
+    return ThreadingHTTPServer((settings.host, settings.port), BeeCuriousRequestHandler)
+
+
+def main() -> None:
+    """Run BeeCuriousService until interrupted."""
+    dotenv_path = load_dotenv()
+    log_directory = Path.cwd() / "logs"
+    log_directory.mkdir(parents=True, exist_ok=True)
+    log_path = log_directory / "beecurious-service.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(log_path, encoding="utf-8"),
+        ],
+    )
+    settings = Settings.from_environment()
+    server = create_server(settings)
+    if dotenv_path:
+        LOG.info("Loaded environment from %s", dotenv_path)
+    else:
+        LOG.info("No .env file found at %s; using process environment and defaults",
+                 Path.cwd() / ".env")
+    LOG.info("Service log: %s", log_path)
+    LOG.info(
+        "BeeCuriousService listening on http://%s:%s with provider=%s",
+        settings.host,
+        settings.port,
+        settings.provider,
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        LOG.info("Stopping BeeCuriousService")
+    finally:
+        server.server_close()

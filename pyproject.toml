@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beecurious-service"
+version = "0.1.0"
+description = "Agent service for the BeeCurious Minecraft experience"
+requires-python = ">=3.11"
+dependencies = ["certifi>=2024.2.2"]
+
+[project.scripts]
+beecurious-service = "beecurious_service.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
