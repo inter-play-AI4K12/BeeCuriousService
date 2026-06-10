@@ -6,9 +6,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from beecurious_service.agents.registry import create_agent_registry
 from beecurious_service.config import Settings, load_dotenv
 from beecurious_service.providers import create_provider
 from beecurious_service.sessions import SessionStore
+from beecurious_service.telemetry import LokiTelemetry
 
 
 LOG = logging.getLogger(__name__)
@@ -29,10 +31,20 @@ class BeeCuriousRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             if path == "/v1/sessions":
-                session = self.store.create()
+                session = self.store.create(payload)
+                LOG.info(
+                    "Created session %s with profile=%s",
+                    session.session_id,
+                    session.profile.profile_id,
+                )
                 self._write_json(
                     HTTPStatus.CREATED,
-                    {"session_id": session.session_id, "agent_name": "Bip Buzzley"},
+                    {
+                        "agent_session_id": session.agent_session_id,
+                        "agent": session.profile.agent_id,
+                        "version": session.profile.version,
+                        "agent_name": session.profile.display_name,
+                    },
                 )
                 return
 
@@ -98,7 +110,19 @@ class BeeCuriousRequestHandler(BaseHTTPRequestHandler):
 def create_server(settings: Settings) -> ThreadingHTTPServer:
     """Create a configured BeeCurious HTTP server."""
     provider = create_provider(settings)
-    BeeCuriousRequestHandler.store = SessionStore(provider)
+    profile_registry = create_agent_registry()
+    telemetry = LokiTelemetry(
+        settings.loki_url,
+        settings.loki_username,
+        settings.loki_password,
+    )
+    BeeCuriousRequestHandler.store = SessionStore(
+        provider,
+        profile_registry,
+        settings.default_agent_id,
+        settings.default_agent_version,
+        telemetry,
+    )
     return ThreadingHTTPServer((settings.host, settings.port), BeeCuriousRequestHandler)
 
 
@@ -125,10 +149,16 @@ def main() -> None:
                  Path.cwd() / ".env")
     LOG.info("Service log: %s", log_path)
     LOG.info(
-        "BeeCuriousService listening on http://%s:%s with provider=%s",
+        "BeeCuriousService listening on http://%s:%s with provider=%s default_agent=%s@%s",
         settings.host,
         settings.port,
         settings.provider,
+        settings.default_agent_id,
+        settings.default_agent_version,
+    )
+    LOG.info(
+        "Loki telemetry is %s",
+        "enabled" if settings.loki_password else "disabled (LOKI_PASSWORD is not set)",
     )
     try:
         server.serve_forever()

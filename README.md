@@ -17,6 +17,28 @@ After installing the project, the `beecurious-service` command is also available
 Configuration is loaded from `BeeCuriousService/.env` when present. Service output is written
 to both the terminal and `logs/beecurious-service.log`.
 
+## Agent profiles
+
+The service selects an immutable agent profile when a session is created. Configure the
+Python-side default without rebuilding Fabric:
+
+```dotenv
+BEECURIOUS_DEFAULT_AGENT=bip
+BEECURIOUS_DEFAULT_AGENT_VERSION=1.0
+```
+
+Fabric includes `game_session_id` and `logging_consent` when it creates a session. Tests or
+experiments may also explicitly request a profile. Unknown profiles are rejected rather than
+silently replaced. The session response and logs report the resolved profile.
+
+New behavior versions should be added under `src/beecurious_service/agents/` and registered in
+`agents/registry.py`. Existing study profiles should remain immutable.
+
+Available profiles:
+
+- `bip@1.0`: minimal friendly baseline with only the command contract
+- `bip@2.0`: full spatially engaged Bip prompt
+
 ## OpenAI provider
 
 ```bash
@@ -31,12 +53,23 @@ Optional OpenAI settings are `OPENAI_ORG_ID` and `OPENAI_PROJECT_ID`.
 Install the project dependencies first with `python3 -m pip install -e .`. HTTPS verification
 uses the `certifi` CA bundle. A managed network can override it with `SSL_CERT_FILE`.
 
+## Loki telemetry
+
+Set `LOKI_PASSWORD` to enable asynchronous structured telemetry. `LOKI_URL` and `LOKI_USER`
+default to the BeeTrap Loki deployment. Telemetry remains disabled when the session request has
+`"logging_consent": false`, even if the service has Loki credentials.
+
+Each record keeps `game_session_id` and `agent_session_id` separate. The session-creation response
+uses the explicit `agent_session_id` field. Agent inputs, context, and
+generated commands are JSON fields in the log body, not Loki labels. Do not put participant names
+in `participant_id`; use the study's pseudonymous participant code.
+
 ## API
 
 - `GET /health`
-- `POST /v1/sessions`
-- `POST /v1/sessions/{session_id}/events`
-- `DELETE /v1/sessions/{session_id}`
+- `POST /v1/sessions` with `game_session_id`, `logging_consent`, and optional `participant_id`
+- `POST /v1/sessions/{agent_session_id}/events`
+- `DELETE /v1/sessions/{agent_session_id}`
 
 Run tests with:
 

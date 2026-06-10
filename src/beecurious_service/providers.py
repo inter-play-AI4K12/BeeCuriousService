@@ -16,6 +16,8 @@ class ProviderResult:
     """Commands and provider state returned by an agent provider."""
     commands: list[AgentCommand]
     response_id: str | None = None
+    usage: dict[str, Any] | None = None
+    model: str | None = None
 
 
 class AgentProvider(Protocol):
@@ -50,7 +52,7 @@ class MockAgentProvider:
         else:
             raw = [{"type": "say", "args": ["I heard you. Let's look around together!"]}]
 
-        return ProviderResult(validate_commands(raw))
+        return ProviderResult(validate_commands(raw), model="mock")
 
 
 class OpenAIAgentProvider:
@@ -111,6 +113,10 @@ class OpenAIAgentProvider:
         return ProviderResult(
             commands=validate_commands(parsed_output.get("commands")),
             response_id=response_body.get("id"),
+            usage=response_body.get("usage")
+            if isinstance(response_body.get("usage"), dict)
+            else None,
+            model=self._settings.model,
         )
 
 

@@ -31,10 +31,15 @@ class Settings:
     port: int
     provider: str
     model: str
+    default_agent_id: str
+    default_agent_version: str
     openai_api_key: str | None
     openai_base_url: str
     openai_org_id: str | None
     openai_project_id: str | None
+    loki_url: str
+    loki_username: str
+    loki_password: str | None
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -44,8 +49,17 @@ class Settings:
             port=int(os.getenv("BEECURIOUS_PORT", "8765")),
             provider=os.getenv("BEECURIOUS_AGENT_PROVIDER", "mock").lower(),
             model=os.getenv("BEECURIOUS_MODEL", "gpt-5.2"),
+            default_agent_id=os.getenv("BEECURIOUS_DEFAULT_AGENT", "bip").lower(),
+            default_agent_version=os.getenv(
+                "BEECURIOUS_DEFAULT_AGENT_VERSION", "1.0"
+            ),
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             openai_org_id=os.getenv("OPENAI_ORG_ID"),
             openai_project_id=os.getenv("OPENAI_PROJECT_ID"),
+            loki_url=os.getenv(
+                "LOKI_URL", "https://loki-beetrap.interplaylab.io"
+            ),
+            loki_username=os.getenv("LOKI_USER", "beetrap"),
+            loki_password=os.getenv("LOKI_PASSWORD"),
         )
