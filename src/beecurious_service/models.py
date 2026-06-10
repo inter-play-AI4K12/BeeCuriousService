@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 
 ALLOWED_COMMANDS = {"say", "fly_to"}
@@ -10,10 +11,18 @@ class AgentCommand:
     """A validated command that Fabric can execute in Minecraft."""
     type: str
     args: list[str]
+    command_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return the command in the JSON wire format."""
-        return {"type": self.type, "args": self.args}
+        command = {"type": self.type, "args": self.args}
+        if self.command_id:
+            command["command_id"] = self.command_id
+        return command
+
+    def issued(self) -> "AgentCommand":
+        """Return this command with a service-generated execution identifier."""
+        return AgentCommand(self.type, self.args, self.command_id or str(uuid4()))
 
 
 def validate_commands(raw_commands: Any) -> list[AgentCommand]:

@@ -4,13 +4,13 @@ import json
 import logging
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from beecurious_service.agents.registry import create_agent_registry
 from beecurious_service.config import Settings, load_dotenv
 from beecurious_service.providers import create_provider
 from beecurious_service.sessions import SessionStore
-from beecurious_service.telemetry import LokiTelemetry
+from beecurious_service.telemetry import LokiNotConfiguredError, LokiTelemetry
 
 
 LOG = logging.getLogger(__name__)
@@ -21,8 +21,42 @@ class BeeCuriousRequestHandler(BaseHTTPRequestHandler):
     store: SessionStore
 
     def do_GET(self) -> None:
-        if urlparse(self.path).path == "/health":
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
+        if path == "/health":
             self._write_json(HTTPStatus.OK, {"status": "ok"})
+            return
+        session_id = self._logs_session_id(path)
+        if session_id:
+            session = self.store.get(session_id)
+            if session is None:
+                self._write_json(HTTPStatus.NOT_FOUND, {"error": "session_not_found"})
+                return
+            try:
+                filters = self._log_filters(parse_qs(parsed_url.query))
+                records = session.retrieve_logs(**filters)
+                self._write_json(
+                    HTTPStatus.OK,
+                    {
+                        "agent_session_id": session.agent_session_id,
+                        "game_session_id": session.game_session_id,
+                        "count": len(records),
+                        "records": records,
+                    },
+                )
+            except ValueError as exc:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            except LokiNotConfiguredError as exc:
+                self._write_json(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": str(exc)},
+                )
+            except (OSError, TimeoutError) as exc:
+                LOG.warning("Loki query failed for session %s: %s", session_id, exc)
+                self._write_json(
+                    HTTPStatus.BAD_GATEWAY,
+                    {"error": "loki_query_failed"},
+                )
             return
         self._write_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
@@ -105,6 +139,70 @@ class BeeCuriousRequestHandler(BaseHTTPRequestHandler):
             if path_parts[3] == "events":
                 return path_parts[2]
         return None
+
+    @staticmethod
+    def _logs_session_id(path: str) -> str | None:
+        path_parts = path.strip("/").split("/")
+        if len(path_parts) == 4 and path_parts[:2] == ["v1", "sessions"]:
+            if path_parts[3] == "logs":
+                return path_parts[2]
+        return None
+
+    @staticmethod
+    def _log_filters(query: dict[str, list[str]]) -> dict[str, Any]:
+        event_type = BeeCuriousRequestHandler._optional_filter(query, "event_type")
+        interaction_id = BeeCuriousRequestHandler._optional_filter(
+            query,
+            "interaction_id",
+        )
+        return {
+            "event_type": event_type.lower() if event_type else None,
+            "interaction_id": interaction_id,
+            "hours": BeeCuriousRequestHandler._bounded_query_int(
+                query,
+                "hours",
+                24,
+                1,
+                24 * 30,
+            ),
+            "limit": BeeCuriousRequestHandler._bounded_query_int(
+                query,
+                "limit",
+                100,
+                1,
+                1000,
+            ),
+        }
+
+    @staticmethod
+    def _optional_filter(
+        query: dict[str, list[str]],
+        name: str,
+    ) -> str | None:
+        values = query.get(name)
+        if not values:
+            return None
+        value = values[0].strip()
+        return value or None
+
+    @staticmethod
+    def _bounded_query_int(
+        query: dict[str, list[str]],
+        name: str,
+        default: int,
+        minimum: int,
+        maximum: int,
+    ) -> int:
+        values = query.get(name)
+        if not values:
+            return default
+        try:
+            value = int(values[0])
+        except ValueError as exc:
+            raise ValueError(f"{name} must be an integer") from exc
+        if value < minimum or value > maximum:
+            raise ValueError(f"{name} must be between {minimum} and {maximum}")
+        return value
 
 
 def create_server(settings: Settings) -> ThreadingHTTPServer:

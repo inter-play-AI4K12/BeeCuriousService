@@ -13,6 +13,7 @@ class AgentProfile:
     version: str
     display_name: str
     build_instructions: InstructionBuilder
+    stationary_check: bool = False
 
     @property
     def profile_id(self) -> str:

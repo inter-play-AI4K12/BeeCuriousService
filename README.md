@@ -38,6 +38,8 @@ Available profiles:
 
 - `bip@1.0`: minimal friendly baseline with only the command contract
 - `bip@2.0`: full spatially engaged Bip prompt
+- `bip@3.0`: Bip 1.0 plus an in-memory stationary-player check; after one minute
+  at the same heartbeat position, Bip suggests exploring
 
 ## OpenAI provider
 
@@ -69,7 +71,18 @@ in `participant_id`; use the study's pseudonymous participant code.
 - `GET /health`
 - `POST /v1/sessions` with `game_session_id`, `logging_consent`, and optional `participant_id`
 - `POST /v1/sessions/{agent_session_id}/events`
+- `GET /v1/sessions/{agent_session_id}/logs` with optional `event_type`,
+  `interaction_id`, `hours`, and `limit` query parameters
 - `DELETE /v1/sessions/{agent_session_id}`
+
+The logs endpoint only accepts an active `agent_session_id`. Returned Loki records must match
+both that agent session and its associated `game_session_id`, preventing the two identifiers from
+being treated interchangeably.
+
+Fabric sends `agent_tick` once per second with a compact world snapshot and command queue IDs.
+Heartbeats update bounded in-memory session history and normally return no commands. Python assigns
+each new command a `command_id`, retains its body, and resends only commands Fabric has not
+acknowledged. Heartbeats are not logged to Loki unless they generate a command or report failure.
 
 Run tests with:
 

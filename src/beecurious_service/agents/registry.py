@@ -3,6 +3,7 @@ from collections.abc import Iterable
 from beecurious_service.agents.base import AgentProfile
 from beecurious_service.agents.bip_v1.profile import BIP_V1_PROFILE
 from beecurious_service.agents.bip_v2.profile import BIP_V2_PROFILE
+from beecurious_service.agents.bip_v3.profile import BIP_V3_PROFILE
 
 
 class AgentProfileRegistry:
@@ -26,4 +27,4 @@ class AgentProfileRegistry:
 
 def create_agent_registry() -> AgentProfileRegistry:
     """Create the registry of agent profiles shipped with this service."""
-    return AgentProfileRegistry([BIP_V1_PROFILE, BIP_V2_PROFILE])
+    return AgentProfileRegistry([BIP_V1_PROFILE, BIP_V2_PROFILE, BIP_V3_PROFILE])
