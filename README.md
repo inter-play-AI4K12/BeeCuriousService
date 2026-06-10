@@ -85,6 +85,10 @@ each new command a `command_id`, retains its body, and resends only commands Fab
 acknowledged. Each accepted heartbeat is logged to Loki as one `game_state` event containing the
 same `snapshot` and `execution` objects processed by the agent service.
 
+The snapshot includes `current_diversity` and an `events` array buffered since the previous
+successful heartbeat. Fabric currently reports agent movement, agent-player bumps, player attacks
+on the agent, pollination start/end, bud rankings, and beehive movement with event-specific details.
+
 Run tests with:
 
 ```bash

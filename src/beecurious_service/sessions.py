@@ -183,6 +183,25 @@ class AgentSession:
         game_tick = snapshot.get("game_tick")
         if not isinstance(game_tick, int):
             raise ValueError("agent_tick.snapshot.game_tick must be an integer")
+        current_diversity = snapshot.get("current_diversity")
+        if (
+            not isinstance(current_diversity, int | float)
+            or isinstance(current_diversity, bool)
+        ):
+            raise ValueError(
+                "agent_tick.snapshot.current_diversity must be a number"
+            )
+        events = snapshot.get("events")
+        if not isinstance(events, list) or not all(
+            isinstance(item, dict)
+            and isinstance(item.get("event_type"), str)
+            and isinstance(item.get("game_tick"), int)
+            and isinstance(item.get("details"), dict)
+            for item in events
+        ):
+            raise ValueError(
+                "agent_tick.snapshot.events must be a list of game events"
+            )
 
         normalized = dict(snapshot)
         normalized["received_at"] = time.time()

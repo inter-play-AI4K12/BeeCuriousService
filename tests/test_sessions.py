@@ -194,7 +194,12 @@ class SessionStoreTest(unittest.TestCase):
         event = telemetry.events[0]
         self.assertEqual(event.event_type, "game_state")
         self.assertEqual(event.data["snapshot"]["game_tick"], 20)
+        self.assertEqual(event.data["snapshot"]["current_diversity"], 412.5)
         self.assertEqual(event.data["snapshot"]["player"]["position"], [0, 64, 0])
+        self.assertEqual(
+            event.data["snapshot"]["events"][0]["event_type"],
+            "pollination_started",
+        )
         self.assertEqual(event.data["execution"]["queued_command_ids"], [])
         self.assertEqual(event.data["agent_profile"], "bip@1.0")
 
@@ -216,6 +221,14 @@ class SessionStoreTest(unittest.TestCase):
                 "event_type": "agent_tick",
                 "snapshot": {
                     "game_tick": game_tick,
+                    "current_diversity": 412.5,
+                    "events": [
+                        {
+                            "event_type": "pollination_started",
+                            "game_tick": game_tick - 1,
+                            "details": {"flower_id": 7},
+                        }
+                    ],
                     "player": {"position": position},
                     "agent": {"position": [0.5, 65.0, 0.5]},
                     "flowers": {"count": 20, "items": []},
