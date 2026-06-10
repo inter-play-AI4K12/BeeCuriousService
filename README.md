@@ -82,7 +82,8 @@ being treated interchangeably.
 Fabric sends `agent_tick` once per second with a compact world snapshot and command queue IDs.
 Heartbeats update bounded in-memory session history and normally return no commands. Python assigns
 each new command a `command_id`, retains its body, and resends only commands Fabric has not
-acknowledged. Heartbeats are not logged to Loki unless they generate a command or report failure.
+acknowledged. Each accepted heartbeat is logged to Loki as one `game_state` event containing the
+same `snapshot` and `execution` objects processed by the agent service.
 
 Run tests with:
 

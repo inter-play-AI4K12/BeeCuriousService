@@ -151,6 +151,15 @@ class AgentSession:
                 new_commands = self._stationary_player_commands()
             outstanding = self._outstanding_commands(execution)
 
+        self._emit(
+            "game_state",
+            None,
+            {
+                "snapshot": snapshot,
+                "execution": execution,
+                "agent_profile": self.profile.profile_id,
+            },
+        )
         if failed_ids:
             self._emit(
                 "agent_commands_failed",
