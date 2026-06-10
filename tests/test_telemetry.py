@@ -114,9 +114,9 @@ class LokiTelemetryTest(unittest.TestCase):
     def test_retrieve_game_logs_filters_exact_session(self, urlopen: object) -> None:
         matching = {
             "source": "fabricmc",
-            "event_type": "PLAYER_POS",
+            "event_type": "game_state",
             "game_session_id": "game-1",
-            "message": "X:1.00 Y:64.00 Z:2.00",
+            "data": {"snapshot": {"game_tick": 20}},
         }
         wrong_game = {**matching, "game_session_id": "game-other"}
         urlopen.return_value = _Response(
@@ -138,7 +138,7 @@ class LokiTelemetryTest(unittest.TestCase):
         records = telemetry.retrieve_game_logs(
             "game-1",
             source="fabricmc",
-            event_type="PLAYER_POS",
+            event_type="game_state",
         )
 
         self.assertEqual(len(records), 1)

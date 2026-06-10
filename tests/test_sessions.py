@@ -173,7 +173,7 @@ class SessionStoreTest(unittest.TestCase):
         self.assertEqual(session.commands[command_ids[0]].state, "completed")
         self.assertEqual(session.commands[command_ids[1]].state, "failed")
 
-    def test_heartbeat_logs_game_state_without_calling_provider(self) -> None:
+    def test_heartbeat_accepts_game_events_without_calling_provider(self) -> None:
         telemetry = _CapturingTelemetry()
         store = SessionStore(
             MockAgentProvider(),
@@ -190,18 +190,13 @@ class SessionStoreTest(unittest.TestCase):
 
         self.assertEqual(response["commands"], [])
         generate.assert_not_called()
-        self.assertEqual(len(telemetry.events), 1)
-        event = telemetry.events[0]
-        self.assertEqual(event.event_type, "game_state")
-        self.assertEqual(event.data["snapshot"]["game_tick"], 20)
-        self.assertEqual(event.data["snapshot"]["current_diversity"], 412.5)
-        self.assertEqual(event.data["snapshot"]["player"]["position"], [0, 64, 0])
+        self.assertEqual(session.snapshots[-1]["game_tick"], 20)
+        self.assertEqual(session.snapshots[-1]["current_diversity"], 412.5)
         self.assertEqual(
-            event.data["snapshot"]["events"][0]["event_type"],
+            session.snapshots[-1]["game_events"][0]["event_type"],
             "pollination_started",
         )
-        self.assertEqual(event.data["execution"]["queued_command_ids"], [])
-        self.assertEqual(event.data["agent_profile"], "bip@1.0")
+        self.assertEqual(telemetry.events, [])
 
     @staticmethod
     def _heartbeat(
@@ -222,7 +217,7 @@ class SessionStoreTest(unittest.TestCase):
                 "snapshot": {
                     "game_tick": game_tick,
                     "current_diversity": 412.5,
-                    "events": [
+                    "game_events": [
                         {
                             "event_type": "pollination_started",
                             "game_tick": game_tick - 1,

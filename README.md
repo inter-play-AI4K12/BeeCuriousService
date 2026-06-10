@@ -82,12 +82,13 @@ being treated interchangeably.
 Fabric sends `agent_tick` once per second with a compact world snapshot and command queue IDs.
 Heartbeats update bounded in-memory session history and normally return no commands. Python assigns
 each new command a `command_id`, retains its body, and resends only commands Fabric has not
-acknowledged. Each accepted heartbeat is logged to Loki as one `game_state` event containing the
-same `snapshot` and `execution` objects processed by the agent service.
+acknowledged. Fabric logs each heartbeat to Loki as one `game_state` event containing the same
+`snapshot` and `execution` objects sent to the agent service.
 
-The snapshot includes `current_diversity` and an `events` array buffered since the previous
-successful heartbeat. Fabric currently reports agent movement, agent-player bumps, player attacks
+The snapshot includes `current_diversity` and a `game_events` array buffered since the previous
+successful heartbeat. Fabric currently reports agent movement, agent-player collisions, player attacks
 on the agent, pollination start/end, bud rankings, and beehive movement with event-specific details.
+All Loki `event_type` values use lowercase `snake_case` across Fabric and Python.
 
 Run tests with:
 

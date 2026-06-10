@@ -104,7 +104,7 @@ class LokiTelemetry:
             ensure_ascii=True,
         )
         logql = (
-            '{app="beetrap",source="beecurious-service"}'
+            '{app="beetrap"}'
             f" |= {agent_fragment}"
         )
         payload = self._query_range(logql, start, end, limit)

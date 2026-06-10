@@ -151,15 +151,6 @@ class AgentSession:
                 new_commands = self._stationary_player_commands()
             outstanding = self._outstanding_commands(execution)
 
-        self._emit(
-            "game_state",
-            None,
-            {
-                "snapshot": snapshot,
-                "execution": execution,
-                "agent_profile": self.profile.profile_id,
-            },
-        )
         if failed_ids:
             self._emit(
                 "agent_commands_failed",
@@ -191,16 +182,16 @@ class AgentSession:
             raise ValueError(
                 "agent_tick.snapshot.current_diversity must be a number"
             )
-        events = snapshot.get("events")
-        if not isinstance(events, list) or not all(
+        game_events = snapshot.get("game_events")
+        if not isinstance(game_events, list) or not all(
             isinstance(item, dict)
             and isinstance(item.get("event_type"), str)
             and isinstance(item.get("game_tick"), int)
             and isinstance(item.get("details"), dict)
-            for item in events
+            for item in game_events
         ):
             raise ValueError(
-                "agent_tick.snapshot.events must be a list of game events"
+                "agent_tick.snapshot.game_events must be a list of game events"
             )
 
         normalized = dict(snapshot)
