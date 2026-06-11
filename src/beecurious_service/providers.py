@@ -120,6 +120,95 @@ class OpenAIAgentProvider:
         )
 
 
+class RochesterAgentProvider:
+    """Provider for the Rochester argumentation conversation API."""
+
+    def __init__(self, settings: Settings):
+        if not settings.rochester_api_key:
+            raise ValueError(
+                "ROCHESTER_API_KEY is required for the Rochester provider"
+            )
+        self._settings = settings
+        ca_bundle = os.getenv("SSL_CERT_FILE") or certifi.where()
+        self._ssl_context = ssl.create_default_context(cafile=ca_bundle)
+
+    def generate(
+        self,
+        instructions: str,
+        event: dict[str, Any],
+        previous_response_id: str | None,
+    ) -> ProviderResult:
+        event_json = json.dumps(event)
+        if previous_response_id:
+            endpoint = "/step"
+            payload = {
+                "model": self._settings.rochester_model,
+                "message": (
+                    f"{instructions}\n\nCurrent event JSON:\n{event_json}"
+                ),
+                "reference": previous_response_id,
+            }
+        else:
+            endpoint = "/init"
+            payload = {
+                "model": self._settings.rochester_model,
+                "story": instructions,
+                "question": (
+                    "How should Bip respond to this Minecraft event?\n"
+                    f"{event_json}"
+                ),
+                "answer": (
+                    "Follow the story instructions exactly and return only "
+                    "the required JSON commands."
+                ),
+            }
+
+        response_body = self._post(endpoint, payload)
+        response_text = response_body.get("response")
+        reference = response_body.get("reference")
+        if not isinstance(response_text, str):
+            raise ValueError("Rochester response did not contain response text")
+        if not isinstance(reference, str):
+            raise ValueError("Rochester response did not contain a reference")
+
+        commands = _rochester_commands(response_text)
+        return ProviderResult(
+            commands=commands,
+            response_id=reference,
+            model=f"rochester:{self._settings.rochester_model}",
+        )
+
+    def _post(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        http_request = request.Request(
+            self._settings.rochester_base_url.rstrip("/") + endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self._settings.rochester_api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with request.urlopen(
+                http_request,
+                timeout=60,
+                context=self._ssl_context,
+            ) as response:
+                response_body = json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            details = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"Rochester request failed ({exc.code}): {details}"
+            ) from exc
+        except error.URLError as exc:
+            raise RuntimeError(
+                f"Could not connect securely to Rochester: {exc.reason}"
+            ) from exc
+        if not isinstance(response_body, dict):
+            raise ValueError("Rochester response was not a JSON object")
+        return response_body
+
+
 def _extract_output_text(response_body: dict[str, Any]) -> str:
     if isinstance(response_body.get("output_text"), str):
         return response_body["output_text"]
@@ -132,6 +221,32 @@ def _extract_output_text(response_body: dict[str, Any]) -> str:
     raise ValueError("OpenAI response did not contain output text")
 
 
+def _strip_json_fence(value: str) -> str:
+    stripped = value.strip()
+    if stripped.startswith("```") and stripped.endswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) >= 3:
+            return "\n".join(lines[1:-1]).strip()
+    return stripped
+
+
+def _rochester_commands(response_text: str) -> list[AgentCommand]:
+    stripped = _strip_json_fence(response_text)
+    try:
+        parsed_output = json.loads(stripped)
+    except json.JSONDecodeError:
+        words = stripped.split()
+        dialogue = " ".join(words[:15])
+        if len(words) > 15:
+            dialogue = dialogue.rstrip(".,!?;:") + "..."
+        return validate_commands(
+            [{"type": "say", "args": [dialogue]}]
+        )
+    if not isinstance(parsed_output, dict):
+        raise ValueError("Rochester JSON response was not an object")
+    return validate_commands(parsed_output.get("commands"))
+
+
 def create_provider(settings: Settings) -> AgentProvider:
     """Create the configured agent provider."""
     if settings.provider == "mock":
@@ -139,3 +254,11 @@ def create_provider(settings: Settings) -> AgentProvider:
     if settings.provider == "openai":
         return OpenAIAgentProvider(settings)
     raise ValueError(f"unsupported provider: {settings.provider}")
+
+
+def create_profile_providers(settings: Settings) -> dict[str, AgentProvider]:
+    """Create providers pinned by specific agent profiles when configured."""
+    providers: dict[str, AgentProvider] = {}
+    if settings.rochester_api_key:
+        providers["rochester"] = RochesterAgentProvider(settings)
+    return providers

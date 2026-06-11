@@ -418,8 +418,10 @@ class SessionStore:
         default_agent_id: str,
         default_agent_version: str,
         telemetry: LokiTelemetry,
+        profile_providers: dict[str, AgentProvider] | None = None,
     ):
         self._provider = provider
+        self._profile_providers = profile_providers or {}
         self._profile_registry = profile_registry
         self._default_agent_id = default_agent_id
         self._default_agent_version = default_agent_version
@@ -450,13 +452,21 @@ class SessionStore:
             requested_agent_id,
             requested_version,
         )
+        provider = self._provider
+        if profile.provider_id:
+            provider = self._profile_providers.get(profile.provider_id)
+            if provider is None:
+                raise ValueError(
+                    f"{profile.provider_id} provider required by "
+                    f"{profile.profile_id} is not configured"
+                )
         session = AgentSession(
             agent_session_id=str(uuid4()),
             game_session_id=game_session_id.strip(),
             participant_id=participant_id.strip() if participant_id else None,
             telemetry_enabled=telemetry_enabled,
             profile=profile,
-            provider=self._provider,
+            provider=provider,
             telemetry=self._telemetry,
         )
         with self._lock:

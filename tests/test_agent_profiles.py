@@ -35,6 +35,15 @@ class AgentProfileRegistryTest(unittest.TestCase):
         self.assertIn("friendly bee", instructions)
         self.assertNotIn("recommendation systems", instructions)
 
+    def test_resolves_bip_v4_as_bip_v1_with_rochester_provider(self) -> None:
+        profile = create_agent_registry().resolve("bip", "4.0")
+        instructions = profile.build_instructions("chat", "Player is nearby.")
+
+        self.assertEqual(profile.profile_id, "bip@4.0")
+        self.assertEqual(profile.provider_id, "rochester")
+        self.assertIn("friendly bee", instructions)
+        self.assertNotIn("recommendation systems", instructions)
+
 
 if __name__ == "__main__":
     unittest.main()

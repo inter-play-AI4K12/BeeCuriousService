@@ -62,6 +62,25 @@ class SessionStoreTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.create(self._request(agent="bip", version="9.0"))
 
+    def test_rejects_profile_when_pinned_provider_is_not_configured(self) -> None:
+        with self.assertRaisesRegex(ValueError, "rochester provider"):
+            self.store.create(self._request(agent="bip", version="4.0"))
+
+    def test_uses_provider_pinned_by_profile(self) -> None:
+        rochester_provider = MockAgentProvider()
+        store = SessionStore(
+            MockAgentProvider(),
+            create_agent_registry(),
+            "bip",
+            "1.0",
+            LokiTelemetry("https://example.test", "test", None),
+            {"rochester": rochester_provider},
+        )
+
+        session = store.create(self._request(agent="bip", version="4.0"))
+
+        self.assertIs(session.provider, rochester_provider)
+
     def test_requires_game_session_id(self) -> None:
         with self.assertRaisesRegex(ValueError, "game_session_id"):
             self.store.create({})

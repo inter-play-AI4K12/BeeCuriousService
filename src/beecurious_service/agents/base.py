@@ -14,6 +14,7 @@ class AgentProfile:
     display_name: str
     build_instructions: InstructionBuilder
     stationary_check: bool = False
+    provider_id: str | None = None
 
     @property
     def profile_id(self) -> str:

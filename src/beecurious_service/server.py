@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 from beecurious_service.agents.registry import create_agent_registry
 from beecurious_service.config import Settings, load_dotenv
-from beecurious_service.providers import create_provider
+from beecurious_service.providers import create_profile_providers, create_provider
 from beecurious_service.sessions import SessionStore
 from beecurious_service.telemetry import LokiNotConfiguredError, LokiTelemetry
 
@@ -208,6 +208,7 @@ class BeeCuriousRequestHandler(BaseHTTPRequestHandler):
 def create_server(settings: Settings) -> ThreadingHTTPServer:
     """Create a configured BeeCurious HTTP server."""
     provider = create_provider(settings)
+    profile_providers = create_profile_providers(settings)
     profile_registry = create_agent_registry()
     telemetry = LokiTelemetry(
         settings.loki_url,
@@ -220,6 +221,7 @@ def create_server(settings: Settings) -> ThreadingHTTPServer:
         settings.default_agent_id,
         settings.default_agent_version,
         telemetry,
+        profile_providers,
     )
     return ThreadingHTTPServer((settings.host, settings.port), BeeCuriousRequestHandler)
 

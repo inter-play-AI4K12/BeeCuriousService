@@ -37,6 +37,9 @@ class Settings:
     openai_base_url: str
     openai_org_id: str | None
     openai_project_id: str | None
+    rochester_api_key: str | None
+    rochester_base_url: str
+    rochester_model: str
     loki_url: str
     loki_username: str
     loki_password: str | None
@@ -57,6 +60,12 @@ class Settings:
             openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             openai_org_id=os.getenv("OPENAI_ORG_ID"),
             openai_project_id=os.getenv("OPENAI_PROJECT_ID"),
+            rochester_api_key=os.getenv("ROCHESTER_API_KEY"),
+            rochester_base_url=os.getenv(
+                "ROCHESTER_BASE_URL",
+                "https://corgis-interplay.cs.rochester.edu",
+            ),
+            rochester_model=os.getenv("ROCHESTER_MODEL", "rehearsal_mixed"),
             loki_url=os.getenv(
                 "LOKI_URL", "https://loki-beetrap.interplaylab.io"
             ),

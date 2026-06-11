@@ -40,6 +40,7 @@ Available profiles:
 - `bip@2.0`: full spatially engaged Bip prompt
 - `bip@3.0`: Bip 1.0 plus an in-memory stationary-player check; after one minute
   at the same heartbeat position, Bip suggests exploring
+- `bip@4.0`: Bip 1.0 behavior using the Rochester argumentation model API
 
 ## OpenAI provider
 
@@ -54,6 +55,24 @@ PYTHONPATH=src python3 -m beecurious_service
 Optional OpenAI settings are `OPENAI_ORG_ID` and `OPENAI_PROJECT_ID`.
 Install the project dependencies first with `python3 -m pip install -e .`. HTTPS verification
 uses the `certifi` CA bundle. A managed network can override it with `SSL_CERT_FILE`.
+
+## Rochester provider for Bip 4
+
+`bip@4.0` always uses the Rochester provider, independently of
+`BEECURIOUS_AGENT_PROVIDER`:
+
+```bash
+export ROCHESTER_API_KEY=...
+export ROCHESTER_BASE_URL=https://corgis-interplay.cs.rochester.edu
+export ROCHESTER_MODEL=rehearsal_mixed
+export BEECURIOUS_DEFAULT_AGENT_VERSION=4.0
+PYTHONPATH=src python3 -m beecurious_service
+```
+
+The provider starts each session with `/init`, retains the returned conversation reference,
+and sends later game events through `/step`. Rochester's rehearsal models return
+argumentation-oriented natural language, which the provider turns into a short `say` command.
+Command JSON is also accepted when a configured model returns it.
 
 ## Loki telemetry
 
