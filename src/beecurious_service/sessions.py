@@ -51,7 +51,6 @@ class AgentSession:
     provider: AgentProvider
     telemetry: LokiTelemetry
     previous_response_id: str | None = None
-    has_greeted: bool = False
     stationary_alerted: bool = False
     snapshots: deque[dict[str, Any]] = field(
         default_factory=lambda: deque(maxlen=MAX_SNAPSHOT_HISTORY),
@@ -113,12 +112,11 @@ class AgentSession:
         try:
             with self.lock:
                 result = self.provider.generate(
-                    instructions=self._build_instructions(event_type, context),
+                    instructions=self.profile.build_instructions(event_type, context),
                     event=event,
                     previous_response_id=self.previous_response_id,
                 )
                 self.previous_response_id = result.response_id
-                self.has_greeted = True
                 commands = self._issue_commands(result.commands)
         except Exception as exc:
             self._emit(
@@ -205,7 +203,7 @@ class AgentSession:
         }
         try:
             result = self.provider.generate(
-                instructions=self._build_instructions(event["event_type"], ""),
+                instructions=self.profile.build_instructions(event["event_type"], ""),
                 event=event,
                 previous_response_id=self.previous_response_id,
             )
@@ -217,19 +215,7 @@ class AgentSession:
             return []
 
         self.previous_response_id = result.response_id
-        self.has_greeted = True
         return self._issue_commands(result.commands)
-
-    def _build_instructions(self, event_type: str, context: str) -> str:
-        """Wrap profile.build_instructions, appending a hard no-reintroduce guard
-        after the first successful LLM response so Bip never double-greets."""
-        instructions = self.profile.build_instructions(event_type, context)
-        if self.has_greeted:
-            instructions += (
-                "\n\nCRITICAL: You have ALREADY introduced yourself in this session. "
-                "Do NOT say your name, do NOT say 'I'm Bip', do NOT greet the player again."
-            )
-        return instructions
 
     def _record_snapshot(self, snapshot: dict[str, Any]) -> None:
         game_tick = snapshot.get("game_tick")
