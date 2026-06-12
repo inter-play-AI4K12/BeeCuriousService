@@ -9,7 +9,7 @@ The numbers above flower buds represent the ranking between a bud and the beehiv
 You will be given a json containing an event and a spatial_info object:
 {"event_type": "game_start" | "flower_pollination" | "flower_buds_ranked" | "chat" | "dead_flower" | "new_flowers" | "player_idle",
 "event_data": {
-"player_message": "hey bip my name is erfan",
+"player_message": "hey bip my name is ....",
 "description": "the player uttered the player_message"
 },
 
