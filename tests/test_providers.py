@@ -35,7 +35,7 @@ class RochesterAgentProviderTest(unittest.TestCase):
             openai_project_id=None,
             rochester_api_key="test-key",
             rochester_base_url="https://rochester.example",
-            rochester_model="rehearsal_mixed",
+            rochester_model="astro_next",
             loki_url="https://loki.example",
             loki_username="test",
             loki_password=None,
@@ -60,7 +60,7 @@ class RochesterAgentProviderTest(unittest.TestCase):
 
         sent = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
         self.assertEqual(urlopen.call_args.args[0].full_url, "https://rochester.example/init")
-        self.assertEqual(sent["model"], "rehearsal_mixed")
+        self.assertEqual(sent["model"], "astro_next")
         self.assertEqual(result.response_id, "reference-1")
         self.assertEqual(result.commands[0].args, ["Hello!"])
 
@@ -86,7 +86,8 @@ class RochesterAgentProviderTest(unittest.TestCase):
         sent = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
         self.assertEqual(urlopen.call_args.args[0].full_url, "https://rochester.example/step")
         self.assertEqual(sent["reference"], "reference-1")
-        self.assertIn("Updated instructions", sent["message"])
+        self.assertNotIn("Updated instructions", sent["message"])
+        self.assertIn('"event_type": "chat"', sent["message"])
         self.assertEqual(result.response_id, "reference-2")
         self.assertEqual(result.commands[0].args, ["player"])
 

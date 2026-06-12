@@ -143,9 +143,7 @@ class RochesterAgentProvider:
             endpoint = "/step"
             payload = {
                 "model": self._settings.rochester_model,
-                "message": (
-                    f"{instructions}\n\nCurrent event JSON:\n{event_json}"
-                ),
+                "message": f"Current Minecraft event JSON:\n{event_json}",
                 "reference": previous_response_id,
             }
         else:

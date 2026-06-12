@@ -65,7 +65,7 @@ class Settings:
                 "ROCHESTER_BASE_URL",
                 "https://corgis-interplay.cs.rochester.edu",
             ),
-            rochester_model=os.getenv("ROCHESTER_MODEL", "rehearsal_mixed"),
+            rochester_model=os.getenv("ROCHESTER_MODEL", "astro_next"),
             loki_url=os.getenv(
                 "LOKI_URL", "https://loki-beetrap.interplaylab.io"
             ),

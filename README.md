@@ -64,15 +64,15 @@ uses the `certifi` CA bundle. A managed network can override it with `SSL_CERT_F
 ```bash
 export ROCHESTER_API_KEY=...
 export ROCHESTER_BASE_URL=https://corgis-interplay.cs.rochester.edu
-export ROCHESTER_MODEL=rehearsal_mixed
+export ROCHESTER_MODEL=astro_next
 export BEECURIOUS_DEFAULT_AGENT_VERSION=4.0
 PYTHONPATH=src python3 -m beecurious_service
 ```
 
 The provider starts each session with `/init`, retains the returned conversation reference,
-and sends later game events through `/step`. Rochester's rehearsal models return
-argumentation-oriented natural language, which the provider turns into a short `say` command.
-Command JSON is also accepted when a configured model returns it.
+and sends later game events through `/step`. Rochester models can return natural language,
+which the provider turns into a short `say` command. Command JSON is also accepted when a
+configured model returns it.
 
 ## Loki telemetry
 
