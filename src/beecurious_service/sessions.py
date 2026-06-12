@@ -20,6 +20,12 @@ STATIONARY_TOLERANCE = 0.1
 MAX_SNAPSHOT_HISTORY = 120
 MAX_COMMAND_HISTORY = 500
 
+# Game events that should trigger an immediate LLM reaction when they arrive
+# inside an agent_tick heartbeat (rather than being recorded silently).
+# Note: player kicks are handled instantly on the mod side (no LLM), so they
+# are intentionally not listed here.
+REACTIVE_EVENT_TYPES = {"activity_narration"}
+
 
 @dataclass(frozen=True)
 class PositionSample:
@@ -149,6 +155,7 @@ class AgentSession:
             new_commands: list[dict[str, Any]] = []
             if self.profile.stationary_check:
                 new_commands = self._stationary_player_commands()
+            new_commands.extend(self._reactive_event_commands(snapshot))
             outstanding = self._outstanding_commands(execution)
 
         if failed_ids:
@@ -169,6 +176,48 @@ class AgentSession:
                 model="bip3-stationary-memory-check",
             )
         return {"commands": outstanding}
+
+    def _reactive_event_commands(
+        self,
+        snapshot: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Invoke the LLM for notable game events carried by a heartbeat.
+
+        Events such as a player kick or scripted activity narration only ever
+        reach the service inside an agent_tick. Without this, the agent would
+        never see them. We forward the reactive events to the provider so the
+        agent profile can respond (e.g. yell when kicked, speak narration).
+        """
+        game_events = snapshot.get("game_events") or []
+        reactive = [
+            event
+            for event in game_events
+            if event.get("event_type") in REACTIVE_EVENT_TYPES
+        ]
+        if not reactive:
+            return []
+
+        event = {
+            "event_type": reactive[0]["event_type"],
+            "game_events": reactive,
+        }
+        try:
+            result = self.provider.generate(
+                instructions=self.profile.build_instructions(
+                    event["event_type"], ""
+                ),
+                event=event,
+                previous_response_id=self.previous_response_id,
+            )
+        except Exception:
+            LOG.exception(
+                "Failed to generate reactive command for %s",
+                event["event_type"],
+            )
+            return []
+
+        self.previous_response_id = result.response_id
+        return self._issue_commands(result.commands)
 
     def _record_snapshot(self, snapshot: dict[str, Any]) -> None:
         game_tick = snapshot.get("game_tick")
