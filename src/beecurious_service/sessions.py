@@ -19,12 +19,33 @@ STATIONARY_HISTORY_SECONDS = 75.0
 STATIONARY_TOLERANCE = 0.1
 MAX_SNAPSHOT_HISTORY = 120
 MAX_COMMAND_HISTORY = 500
+# How many recent scripted lines to carry into the next LLM call as Bip's own prior turns. Caps
+# growth if Bip runs fully scripted for a long stretch without the model ever being called.
+MAX_SCRIPTED_MEMORY = 20
 
 # Game events that should trigger an immediate LLM reaction when they arrive
 # inside an agent_tick heartbeat (rather than being recorded silently).
 # Note: player kicks are handled instantly on the mod side (no LLM), so they
-# are intentionally not listed here.
-REACTIVE_EVENT_TYPES = {"activity_narration"}
+# are intentionally not listed here. activity_context (improv) is gated by the
+# BIP_LLM_IMPROV feature flag — see reactive_event_types().
+REACTIVE_EVENT_TYPES = {"activity_narration", "activity_context"}
+
+
+def reactive_event_types() -> set[str]:
+    """Event types we react to, honouring the current feature flags."""
+    from beecurious_service.features import get_features
+
+    types = {"activity_narration"}
+    if get_features().llm_improv:
+        types.add("activity_context")
+    return types
+
+
+class _SafeFormat(dict):
+    """dict for str.format_map that leaves unknown placeholders untouched."""
+
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
 
 
 @dataclass(frozen=True)
@@ -65,6 +86,9 @@ class AgentSession:
         default_factory=lambda: deque(maxlen=MAX_COMMAND_HISTORY),
         repr=False,
     )
+    # Scripted lines Bip has spoken since the last LLM call. Injected as prior assistant turns on
+    # the next call so the model "remembers" saying them (see _generate / _record_scripted_line).
+    scripted_lines_pending: list[str] = field(default_factory=list, repr=False)
     lock: Lock = field(default_factory=Lock, repr=False)
 
     @property
@@ -94,6 +118,12 @@ class AgentSession:
         if event_type == "agent_tick":
             return self._handle_agent_tick(event)
 
+        # Beat-driven Bip greets via the scripted intro beat, so the game_start LLM call is pure
+        # dead weight — and because every event shares one serialized command channel, that call
+        # would block the scripted intro for several seconds at startup. Skip it entirely.
+        if event_type == "game_start" and self.profile.beat_driven:
+            return {"commands": [], "interaction_id": str(uuid4())}
+
         context = payload.get("context", "")
         if not isinstance(context, str):
             raise ValueError("context must be a string")
@@ -111,12 +141,10 @@ class AgentSession:
         started = time.monotonic()
         try:
             with self.lock:
-                result = self.provider.generate(
-                    instructions=self.profile.build_instructions(event_type, context),
-                    event=event,
-                    previous_response_id=self.previous_response_id,
+                result = self._generate(
+                    self.profile.build_instructions(event_type, context),
+                    event,
                 )
-                self.previous_response_id = result.response_id
                 commands = self._issue_commands(result.commands)
         except Exception as exc:
             self._emit(
@@ -189,23 +217,35 @@ class AgentSession:
         agent profile can respond (e.g. yell when kicked, speak narration).
         """
         game_events = snapshot.get("game_events") or []
-        reactive = [
-            event
-            for event in game_events
-            if event.get("event_type") in REACTIVE_EVENT_TYPES
-        ]
-        if not reactive:
-            return []
+        allowed = reactive_event_types()
 
+        commands: list[dict[str, Any]] = []
+        legacy: list[dict[str, Any]] = []
+        for event in game_events:
+            event_type = event.get("event_type")
+            if event_type == "activity_beat":
+                # Python owns the choreography for these (scripted or improv per beat).
+                commands.extend(self._activity_beat_commands(event))
+            elif event_type in allowed:
+                legacy.append(event)
+
+        if legacy:
+            commands.extend(self._legacy_reactive_commands(legacy))
+        return commands
+
+    def _legacy_reactive_commands(
+        self,
+        reactive: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Old path: forward verbatim activity_narration / activity_context to the LLM."""
         event = {
             "event_type": reactive[0]["event_type"],
             "game_events": reactive,
         }
         try:
-            result = self.provider.generate(
-                instructions=self.profile.build_instructions(event["event_type"], ""),
-                event=event,
-                previous_response_id=self.previous_response_id,
+            result = self._generate(
+                self.profile.build_instructions(event["event_type"], ""),
+                event,
             )
         except Exception:
             LOG.exception(
@@ -214,8 +254,92 @@ class AgentSession:
             )
             return []
 
-        self.previous_response_id = result.response_id
         return self._issue_commands(result.commands)
+
+    def _activity_beat_commands(
+        self,
+        event: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Turn one semantic activity_beat into commands via the Python beat registry."""
+        from beecurious_service import activities
+        from beecurious_service.features import get_features
+
+        details = event.get("details") or {}
+        activity = details.get("activity")
+        beat_name = details.get("beat")
+        if not isinstance(activity, str) or not isinstance(beat_name, str):
+            return []
+
+        features = get_features()
+        beat = activities.resolve(activity, beat_name, features)
+        if beat is None:
+            return []
+
+        if beat.improv and features.llm_improv and not beat.scripted_only:
+            description = beat.improv.format_map(_SafeFormat(details))
+            improv_event = {
+                "event_type": "activity_context",
+                "game_events": [
+                    {
+                        "event_type": "activity_context",
+                        "details": {"description": description},
+                    }
+                ],
+            }
+            try:
+                result = self._generate(
+                    self.profile.build_instructions("activity_context", ""),
+                    improv_event,
+                )
+            except Exception:
+                LOG.exception("Failed to improvise beat %s/%s", activity, beat_name)
+                return []
+            improv_commands = list(result.commands)
+            if beat.look_before:
+                flower_id = details.get("flower_id")
+                if flower_id is not None:
+                    # Turn to the flower before the improvised reaction, then the LLM's fly_to.
+                    improv_commands.insert(
+                        0, AgentCommand("look_at", ["flower", str(int(flower_id))]))
+            if beat.give_clocks:
+                # Sequenced last so the items land exactly when Bip finishes the spoken hand-off.
+                improv_commands.append(AgentCommand("give_clocks", []))
+            return self._issue_commands(improv_commands)
+
+        # Scripted (or improv fallback when llm_improv is off).
+        # Order: look_at -> say_before ("Oh no!") -> fly over -> say -> give_clocks (if any).
+        # Each spoken line is also recorded so the next LLM call knows Bip said it.
+        commands: list[AgentCommand] = []
+        fly_to = self._resolve_fly_to(beat.fly_to, details)
+        if beat.look_before and fly_to:
+            commands.append(AgentCommand("look_at", fly_to))
+        if beat.say_before:
+            commands.append(AgentCommand("say", [beat.say_before]))
+            self._record_scripted_line(beat.say_before)
+        if fly_to:
+            commands.append(AgentCommand("fly_to", fly_to))
+        if beat.say:
+            commands.append(AgentCommand("say", [beat.say]))
+            self._record_scripted_line(beat.say)
+        if beat.give_clocks:
+            commands.append(AgentCommand("give_clocks", []))
+        return self._issue_commands(commands) if commands else []
+
+    @staticmethod
+    def _resolve_fly_to(
+        fly_to: tuple[str, ...] | None,
+        details: dict[str, Any],
+    ) -> list[str] | None:
+        """Resolve a beat's fly_to, substituting ("flower", "@id") from details.flower_id."""
+        if not fly_to:
+            return None
+        args = list(fly_to)
+        if args[:1] == ["flower"] and len(args) == 2 and args[1] == "@id":
+            flower_id = details.get("flower_id")
+            if flower_id is None:
+                return None
+            return ["flower", str(int(flower_id))]
+        return args
 
     def _record_snapshot(self, snapshot: dict[str, Any]) -> None:
         game_tick = snapshot.get("game_tick")
@@ -322,6 +446,35 @@ class AgentSession:
             for sample in samples
             for index in range(3)
         )
+
+    def _generate(self, instructions: str, event: dict[str, Any]):
+        """Call the provider, folding any pending scripted lines into the model's memory.
+
+        The scripted lines are injected as prior assistant turns so the model sees what the player
+        actually heard, then cleared (they are now part of the response chain). Also advances the
+        response-chain pointer. On failure the pending lines are kept for the next attempt.
+        """
+        result = self.provider.generate(
+            instructions=instructions,
+            event=event,
+            previous_response_id=self.previous_response_id,
+            prior_assistant_lines=list(self.scripted_lines_pending) or None,
+        )
+        self.scripted_lines_pending.clear()
+        self.previous_response_id = result.response_id
+        return result
+
+    def _record_scripted_line(self, text: str | None) -> None:
+        """Remember a verbatim line Bip just spoke without the model, for the next call's memory."""
+        if not text:
+            return
+        from beecurious_service.features import get_features
+
+        if not get_features().scripted_memory:
+            return
+        self.scripted_lines_pending.append(text)
+        if len(self.scripted_lines_pending) > MAX_SCRIPTED_MEMORY:
+            del self.scripted_lines_pending[:-MAX_SCRIPTED_MEMORY]
 
     def _issue_commands(
         self,

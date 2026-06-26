@@ -27,7 +27,15 @@ class AgentProvider(Protocol):
         instructions: str,
         event: dict[str, Any],
         previous_response_id: str | None,
+        prior_assistant_lines: list[str] | None = None,
     ) -> ProviderResult:
+        """Generate commands for an event.
+
+        ``prior_assistant_lines`` are scripted things Bip said that never went through the model
+        (e.g. verbatim beats). They are injected ahead of this turn as prior assistant messages so
+        the model's memory matches what the player actually heard — letting it answer follow-ups
+        about lines it didn't itself generate.
+        """
         ...
 
 
@@ -38,8 +46,9 @@ class MockAgentProvider:
         instructions: str,
         event: dict[str, Any],
         previous_response_id: str | None,
+        prior_assistant_lines: list[str] | None = None,
     ) -> ProviderResult:
-        del instructions, previous_response_id
+        del instructions, previous_response_id, prior_assistant_lines
         event_type = event.get("event_type")
 
         if event_type == "game_start":
@@ -69,11 +78,12 @@ class OpenAIAgentProvider:
         instructions: str,
         event: dict[str, Any],
         previous_response_id: str | None,
+        prior_assistant_lines: list[str] | None = None,
     ) -> ProviderResult:
         payload: dict[str, Any] = {
             "model": self._settings.model,
             "instructions": instructions,
-            "input": json.dumps(event),
+            "input": self._build_input(event, prior_assistant_lines),
         }
         if previous_response_id:
             payload["previous_response_id"] = previous_response_id
@@ -118,6 +128,28 @@ class OpenAIAgentProvider:
             else None,
             model=self._settings.model,
         )
+
+    @staticmethod
+    def _build_input(
+        event: dict[str, Any],
+        prior_assistant_lines: list[str] | None,
+    ) -> Any:
+        """Build the Responses API ``input``.
+
+        With no scripted lines to inject this is just the event JSON string (unchanged behaviour).
+        Otherwise we send a list: each scripted line as a prior assistant message (so the model
+        treats it as something it said), followed by the event as the new user turn. The new
+        response stores these items, so they persist in the chain for later follow-ups.
+        """
+        event_json = json.dumps(event)
+        if not prior_assistant_lines:
+            return event_json
+        items: list[dict[str, Any]] = [
+            {"role": "assistant", "content": [{"type": "output_text", "text": line}]}
+            for line in prior_assistant_lines
+        ]
+        items.append({"role": "user", "content": [{"type": "input_text", "text": event_json}]})
+        return items
 
 
 def _extract_output_text(response_body: dict[str, Any]) -> str:
