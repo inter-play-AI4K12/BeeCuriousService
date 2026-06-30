@@ -309,21 +309,33 @@ class AgentSession:
         # Scripted (or improv fallback when llm_improv is off).
         # Order: look_at -> say_before ("Oh no!") -> fly over -> say -> give_clocks (if any).
         # Each spoken line is also recorded so the next LLM call knows Bip said it.
+        # Scripted lines may carry live game values via {placeholders} (e.g. a flower's real
+        # attributes), filled from the event details — so even fully-scripted Bip can state
+        # what the player is actually looking at without an LLM call.
         commands: list[AgentCommand] = []
         fly_to = self._resolve_fly_to(beat.fly_to, details)
+        say_before = self._fill(beat.say_before, details)
+        say = self._fill(beat.say, details)
         if beat.look_before and fly_to:
             commands.append(AgentCommand("look_at", fly_to))
-        if beat.say_before:
-            commands.append(AgentCommand("say", [beat.say_before]))
-            self._record_scripted_line(beat.say_before)
+        if say_before:
+            commands.append(AgentCommand("say", [say_before]))
+            self._record_scripted_line(say_before)
         if fly_to:
             commands.append(AgentCommand("fly_to", fly_to))
-        if beat.say:
-            commands.append(AgentCommand("say", [beat.say]))
-            self._record_scripted_line(beat.say)
+        if say:
+            commands.append(AgentCommand("say", [say]))
+            self._record_scripted_line(say)
         if beat.give_clocks:
             commands.append(AgentCommand("give_clocks", []))
         return self._issue_commands(commands) if commands else []
+
+    @staticmethod
+    def _fill(text: str | None, details: dict[str, Any]) -> str | None:
+        """Substitute {placeholders} in a scripted line from the beat details (unknown keys kept)."""
+        if not text:
+            return text
+        return text.format_map(_SafeFormat(details))
 
     @staticmethod
     def _resolve_fly_to(
