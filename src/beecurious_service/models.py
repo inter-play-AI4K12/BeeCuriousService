@@ -3,7 +3,7 @@ from typing import Any
 from uuid import uuid4
 
 
-ALLOWED_COMMANDS = {"say", "fly_to"}
+ALLOWED_COMMANDS = {"say", "fly_to", "done"}
 
 
 @dataclass(frozen=True)
@@ -45,6 +45,11 @@ def validate_commands(raw_commands: Any) -> list[AgentCommand]:
             commands.append(AgentCommand(command_type, string_args))
         elif command_type == "fly_to" and _valid_fly_to_args(string_args):
             commands.append(AgentCommand(command_type, string_args))
+        elif command_type == "done":
+            # A signal, not a physical action — tells Fabric this conversational exchange is
+            # genuinely finished (not just that Bip stopped talking), so the game can advance
+            # precisely instead of guessing with a timer. No args needed.
+            commands.append(AgentCommand(command_type, []))
 
     if not commands:
         raise ValueError("response did not contain a valid command")

@@ -104,18 +104,69 @@ After that, NEVER say your name or re-introduce yourself in any response.
 Your conversation history (response chain) tells you if you've already met the player — trust it.
 """.strip()
 
+NAME_GREETING_RULE = """
+IF THE PLAYER JUST TOLD YOU THEIR NAME: your conversation history will show you just asked "what's
+your name?" and the player's next message is their reply. Greet them warmly BY THAT NAME and
+welcome them to the garden, in ONE short line (e.g. "Nice to meet you Sam, welcome to the magic
+garden!"). Never ask their name again after this.
+""".strip()
+
+# Lets the game advance precisely instead of guessing with a timer how long a reply takes, and
+# stops the game from cutting Bip off mid-conversation when his OWN reply invites a further one.
+DONE_SIGNAL_RULE = """
+SIGNALING WHEN AN EXCHANGE IS OVER: after replying to something the player said in chat, decide
+whether this back-and-forth is now genuinely finished.
+- If you are NOT expecting or inviting another reply (you answered their question, confirmed
+  something, or just made a passing observation), ALSO include, after your say command, this exact
+  extra command: {"type": "done", "args": []}
+- If you just asked the player a new question, or are still waiting on them to respond to
+  something, do NOT include it — the exchange is still open.
+This is an extra signal alongside your say/fly_to commands, never a replacement for them, and it
+never counts as a second say.
+""".strip()
+
+# The single most important guardrail against inventing wrong "facts" about the game's data.
+GROUNDED_ANSWERS_RULE = """
+NEVER INVENT AN EXPLANATION OF GAME DATA: if the player asks what a data-panel value or level
+means (e.g. "what does mild mean?"), or states a specific number or level for a flower's traits,
+you must answer using ONLY real information you were actually given (look for any "FACT CHECK"
+context provided with this event). These traits (color, smell strength, nectar sweetness, water
+needed, sunlight needed) are numbers on the data panel, NOT things you can judge by how a flower
+looks — never describe them in visual terms you made up. If you were not given the real numbers or
+boundaries for the current thing being discussed, say so honestly and point the player back to the
+data panel rather than guessing ("Let's check the data panel together, I'm not totally sure!").
+""".strip()
+
+# Stops chat replies from wandering the player toward actions that aren't actually the current
+# task — the game state machine drives what happens next, not your conversation.
+STAY_ON_CURRENT_MOMENT_RULE = """
+NEVER STEER THE PLAYER TOWARD A NEW ACTION: when replying to chat, stay inside the current moment
+— don't suggest, invite, or hint at something new to try (e.g. "let's pollinate another flower!",
+"try planting more!") unless the game itself just told you to (see any "CONTEXT" note provided with
+this event). React, reflect, and answer their question only. The game decides when the player moves
+to their next task, never your chat reply — if you're unsure what's supposed to happen next, don't
+guess, just stay with what's already being discussed.
+""".strip()
+
 
 def build_instructions(event_type: str, world_context: str) -> str:
     del event_type
     features = get_features()
 
-    rules = [EVENT_RULES, NOVICE_RULE]
+    rules = [
+        EVENT_RULES,
+        NOVICE_RULE,
+        GROUNDED_ANSWERS_RULE,
+        STAY_ON_CURRENT_MOMENT_RULE,
+        DONE_SIGNAL_RULE,
+    ]
     if features.brevity:
         rules.append(BREVITY_RULE)
     if features.stay_on_task:
         rules.append(STAY_ON_TASK_RULE)
     if features.interactive_qa:
         rules.append(JUDGE_ANSWERS_RULE)
+        rules.append(NAME_GREETING_RULE)
     rules.append(GREETING_RULE)
     behaviour = "\n\n".join(rules)
 

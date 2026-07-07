@@ -42,73 +42,88 @@ class Beat:
 
 
 # --- Pollinate the Garden -------------------------------------------------------------------
+# Detail keys Java provides per beat:
+#   flower_id  - the flower a fly_to targets (suggested flower, pollinated flower, new flower...)
+#   color      - human color name of the suggested flower (suggest_flower)
 
 _POLLINATE: dict[str, Beat] = {
-    # FB1: greet, invite them to take in how varied the garden is, then a prediction prompt.
-    # scripted_only so Bip speaks the instant the session connects (no LLM wait at game start).
+    # FB1: greet. scripted_only so Bip speaks the instant the session connects (no LLM wait at
+    # game start). Wording mirrors the case where the player has NOT met Bip yet.
     "intro": Beat(
-        say="Hi, I'm Bip Buzzley! Look how many colors and different flowers there are. Pollinate "
-            "one you like, and let's see what happens!",
+        say="Hi, I'm Bip Buzzley, and welcome to the magic garden! Let's try pollinating some "
+            "flowers!",
         scripted_only=True,
     ),
-    # Already met the player in an earlier activity — skip the greeting, just set up the task.
+    # Already met the player in an earlier activity (the normal flow, since Observe runs first) —
+    # skip the greeting, just set up the task.
     "intro_returning": Beat(
-        say="Okay, let's pollinate a flower and see what happens to the garden!",
+        say="This time, let's try pollinating some flowers!",
         scripted_only=True,
     ),
-    # FB2: full how-to (used when tiered hints are off; repeated on a timer while the player idles).
-    "instructions": Beat(
-        say="Aim at a flower and the bee nest pops into slot 5. Hold it and right-click to pollinate!",
+    # FB2: Bip proactively suggests a specific nearby flower and flies to it, naming its color from
+    # {color}. scripted_only for reliability (the color must always be right).
+    "suggest_flower": Beat(
+        say="Did you see that? Let's find a flower you really like! What do you think about this "
+            "{color} one?",
+        fly_to=("flower", "@id"),
+        scripted_only=True,
     ),
-    # Stuck on sub-task 1: hasn't aimed at a flower yet.
-    "stuck_look_0": Beat(say="See a flower you like? Point your crosshair right at it."),
-    "stuck_look_1": Beat(say="Aim straight at any flower in the garden, go on, pick one!"),
-    # Stuck on sub-task 2: aimed at a flower but hasn't pollinated.
-    "stuck_pollinate_0": Beat(
-        say="The bee nest should be in slot 5. Hold it and right-click the flower to pollinate!"),
-    "stuck_pollinate_1": Beat(
-        say="Select slot 5, aim at the flower, then right-click to pollinate it!"),
-    # FB3 + FB4: buds have sprouted, each showing a small number. Point out the buds, that the hive
-    # ranks them by how close they are (number 1 = closest), and that some will grow. This is the
-    # observable mechanic, so Bip MAY explain it; he just doesn't explain WHY it matters.
+    # Two escalating, unconditional reminders (not gated on whether they've aimed at anything) —
+    # ~15s and ~30s after suggest_flower if the player still hasn't pollinated.
+    "pollinate_reminder_0": Beat(say="Come on, try pollinating your favorite flower!"),
+    "pollinate_reminder_1": Beat(
+        say="What's your favorite flower? Try pollinating it and we'll see what happens!"),
+    # FB3 + FB4: buds have sprouted, each showing a small number. Fly to the flower the player just
+    # pollinated and wonder OUT LOUD what the numbers mean, rather than explaining it or asking a
+    # direct question — this beat never waits for or reacts to an answer (the bloom happens on a
+    # fixed timer right after), so phrasing it as a wonder rather than a question the player is
+    # expected to answer avoids the awkward "asked, then ignored the answer" feeling.
     "buds_ranked": Beat(
-        say="See the new buds with numbers? Number 1 is the closest to the flower you pollinated. "
-            "Some of them will grow!",
+        say="Look, new buds have grown! I wonder what the numbers mean.",
         fly_to=("flower", "@id"),
         scripted_only=True,  # immediate feedback — don't make the player wait on the LLM here
         improv=(
-            "New flower buds just sprouted, and each shows a small number above it. Fly down next "
-            "to the bud labelled 1 (id {flower_id}) and explain in one short line that the hive "
-            "ranks the buds by how close they are, so number 1 is the closest to the flower they "
-            "pollinated, and some will grow. You SHOULD mention the numbers, since the buds visibly "
-            "show them. Do not explain why it matters."
+            "New flower buds just sprouted next to the flower the player pollinated (id "
+            "{flower_id}), each showing a small number above it. Fly down to it and, in one short "
+            "curious line, wonder OUT LOUD what the numbers might mean. Do NOT phrase it as a "
+            "direct question aimed at the player (you will not wait for or react to a reply), and "
+            "do not explain it yourself."
         ),
     ),
-    # FB7 (notice): the bloom happened — new flowers grew. Only celebrate the growth here; the
-    # deaths are left for why_dead so Bip doesn't repeat the same observation two beats in a row.
+    # FB7 (notice): the bloom happened — new flowers grew, and they resemble the one just planted.
+    # Only celebrate the growth+resemblance here; the deaths are left for why_dead so Bip doesn't
+    # repeat the same observation two beats in a row.
     "new_flowers": Beat(
-        say="Whoa, look! New flowers just bloomed!",
+        say="Ooh wow! Look, some new flowers grew! They look a lot like the ones you planted!",
         fly_to=("flower", "@id"),
         scripted_only=True,  # immediate feedback — point it out the instant they bloom
         improv=(
-            "The pollination just bloomed and new flowers grew (one is id {flower_id}). Fly to the "
-            "new flower and, in one short excited line, celebrate that new flowers just appeared. "
-            "Do NOT mention anything dying yet — that comes in the very next beat. Call it "
-            "\"this one\", never a number."
+            "The pollination just bloomed and new flowers grew (one is id {flower_id}), and they "
+            "resemble the flower the player planted. Fly to the new flower and, in one short "
+            "excited line, celebrate that new flowers grew AND notice they look a lot like the "
+            "one just planted. Do NOT mention anything dying yet — that comes in the very next "
+            "beat. Call it \"this one\", never a number."
         ),
+    ),
+    # FB4.1: the hive/nest itself moved toward the pollinated flower — a separate, purely factual
+    # beat fired a few seconds after new_flowers so it never lands back-to-back with it.
+    "hive_moved": Beat(
+        say="And it looks like the hive moved as well to get closer to the flower you "
+            "pollinated!",
+        scripted_only=True,
     ),
     # Ask the player to reason about a death (interactive_qa on): notice it, call them over, dart
     # to it, then ask. "that one" (not "this one") because Bip isn't there yet when he reacts.
     "why_dead": Beat(
-        say_before="Oh no, that one died, come over here!",
+        say_before="Oh no! Look over there, that flower died!",
         fly_to=("flower", "@id"),
-        say="Why do you think it happened?",
+        say="Why do you think this flower died?",
         look_before=True,  # glance at the dead flower, react, THEN dart over
         improv=(
             "A flower (id {flower_id}) just withered and died. Say one short dismayed line that "
-            "calls the player over (like \"Oh no, that one died, come over here!\"), then fly to "
-            "it, then ask in one short question why they think it died. Do NOT answer it yourself. "
-            "Never say the flower's number — call it \"that one\" / \"this one\"."
+            "calls the player over (like \"Oh no! Look over there, that flower died!\"), then fly "
+            "to it, then ask in one short question why they think this flower died. Do NOT answer "
+            "it yourself. Never say the flower's number — call it \"that one\" / \"this one\"."
         ),
     ),
     # No answer yet — warmly pressure the player to take a guess (fires up to MAX_ANSWER_NUDGES).
@@ -121,7 +136,7 @@ _POLLINATE: dict[str, Beat] = {
     ),
     # interactive_qa off: notice it, call them over, dart to it, then share a HUNCH (not a fact).
     "why_dead_tell": Beat(
-        say_before="Oh no, that one died, come over here!",
+        say_before="Oh no! Look over there, that flower died!",
         fly_to=("flower", "@id"),
         say="Hmm. I wonder if it's because so many flowers here look the same now? Weird, huh?",
         look_before=True,  # glance at the dead flower, react, THEN dart over
@@ -132,131 +147,167 @@ _POLLINATE: dict[str, Beat] = {
             "fact or mention any system. Never say its number — call it \"that one\" / \"this one\"."
         ),
     ),
-    # Bip physically hands over the time-travel clocks (after the why-dead exchange).
+    # Bip physically hands over the time-travel clocks (after the why-dead exchange). Never fires
+    # until the player has actually answered (see FilterBubbleBipScriptedPollinationHappeningState
+    # PHASE_ASK/PHASE_REFINE — Java gates this beat behind a real reply, not a timer).
     "clock_handoff": Beat(
         requires="time_travel_handover",
         fly_to=("player",),
-        say="Here, take these clocks! Rewind the garden and see what happens to all the colors.",
+        say="Here, have these clocks! Use them to look at how the garden changed over time!",
         improv=(
             "Fly to the player and give them two clock tools that rewind and replay the garden. "
-            "In one short line, tell them to right-click to use them and to watch what happens "
-            "to the garden's colors and variety."
+            "In one short line, tell them to right-click to use them and to watch how the garden "
+            "changed over time."
         ),
         give_clocks=True,  # the clocks land in hand right as the say finishes
     ),
-    # The player just rewound the garden — this is where the diversity reflection lands, because
-    # they can actually SEE the before/after. (There is no separate "closing" line any more.)
+    # Degraded-path variant of clock_handoff: fires ONLY when Bip's reply to the why-dead answer
+    # never arrived within a generous window (LLM/network hiccup). scripted_only so it is always
+    # reliable — the whole point is to never hand over the clocks in total silence.
+    "clock_handoff_no_reply": Beat(
+        requires="time_travel_handover",
+        fly_to=("player",),
+        say="Anyway, here, have these clocks! Use them to look at how the garden changed over "
+            "time!",
+        give_clocks=True,
+        scripted_only=True,
+    ),
+    # The player just rewound the garden — this is where the reflection lands, because they can
+    # actually SEE the before/after. Deliberately avoids the word "diversity" (Bip is an
+    # intelligent novice; this stays an observable, wondered-about comparison, not a named metric).
     "time_travel": Beat(
-        say="Whoa, look! It was way more colorful before. And the ones that vanished were the really "
-            "different ones. Huh, why do you think that is?",
+        say="Whoa, it was way more colorful and varied before you started pollinating! Why do you "
+            "think that happened?",
         improv=(
             "The player just rewound the garden with the clocks. In one short, slightly wistful "
-            "line, notice OUT LOUD that it used to be more colorful and that the flowers that "
-            "vanished were the really different ones, and wonder why that might be — as a curious "
-            "observation, not a known explanation, then ask what the player thinks."
+            "line, notice OUT LOUD that it used to be more colorful and varied before they started "
+            "pollinating, and ask what the player thinks happened. Do not name any system or "
+            "metric — keep it an observation, not an explanation."
         ),
+    ),
+    # Fires once, the first time a LATER pollination round ends with less color/variety than the
+    # round before (see BeetrapStateManager) — a one-shot echo of the time_travel beat so repeated
+    # rounds don't all narrate identically.
+    "diversity_dropped_again": Beat(
+        say="Aw man, it looks less colorful and varied again!",
+        scripted_only=True,
+    ),
+    # The activity ends because the garden's color/variety fell too low to continue.
+    "garden_died": Beat(
+        say="Oh no! It looks like the garden got a lot less colorful, and it ended up dying!",
+        scripted_only=True,
     ),
 }
 
 
 # --- Observe the Flowers --------------------------------------------------------------------
-# Bip introduces the garden and the player's role, then teaches that a flower is just its five
-# attributes (color, smell, nectar, water, sunlight) and that "different" literally means "far
-# apart". Java drives the phases and fills the {placeholders} below from the real flower it flew
-# to, so even the scripted lines name the actual values the player sees on the sidebar.
+# Bip opens by trading names with the player, sets up the shared goal, points out the data panel,
+# then runs a short "find a flower with this trait" search — repeated with a different trait each
+# round — before handing off to the Filter Bubble activity. Java drives the phases and fills the
+# {placeholders} below from the real flower/feature it is working with.
 #
 # Detail keys Java provides per beat:
-#   flower_id          - the flower the fly_to/look_at targets (focus, neighbor, or the pick)
-#   attributes         - human phrase for the focus flower, e.g. "Red petals, very sweet nectar, ..."
-#   neighbor_attributes- human phrase for the neighbor flower (compare_neighbor)
-#   requested          - what to go find, e.g. "a Dark blue one" (challenge)
-#   distance_desc      - how different the pick turned out, e.g. "really different" (distance_lesson)
+#   requested      - what to go find, e.g. "a Purple flower" / "a flower with a strong smell"
+#   feature_label  - the exact sidebar row name for the current target, e.g. "Nectar sweetness"
 
 _OBSERVE: dict[str, Beat] = {
-    # Greet + set up the role. scripted_only so Bip speaks the instant the session connects.
+    # Step 0: first-ever meeting — ask the player's name. scripted_only so Bip speaks the instant
+    # the session connects. The reply is handled by the ordinary chat pipeline: Bip's own question
+    # is remembered (scripted_memory), so when the player answers, the LLM naturally greets them by
+    # name (see NAME_GREETING_RULE in prompts.py) without any extra plumbing here.
     "intro": Beat(
-        say="Hi, I'm Bip Buzzley, and this is the magic garden! You're the gardener, and with my "
-            "help we'll keep it alive and colorful.",
+        say="Hi, my name's Bip Buzzley! What's yours?",
         scripted_only=True,
     ),
-    # Already met the player in an earlier activity — skip the greeting, just set up the task.
+    # First-ever meeting, but interactive_qa is off — no question, just a plain warm greeting.
+    "intro_no_qa": Beat(
+        say="Hi, I'm Bip Buzzley! Welcome to the magic garden!",
+        scripted_only=True,
+    ),
+    # Already met the player in an earlier activity (e.g. Filter Bubble ran first) — skip the
+    # name exchange entirely, just jump into looking at flowers together.
     "intro_returning": Beat(
         say="Okay, let's take a closer look at these flowers together!",
         scripted_only=True,
     ),
-    # Fly to a focus flower and ask the player to read it off (interactive_qa ON).
-    "examine": Beat(
-        say="Come look at this flower! Put your crosshair on it and tell me what you see.",
-        fly_to=("flower", "@id"),
-        improv=(
-            "Fly down to this flower (id {flower_id}). It has: {attributes}. In ONE short, curious "
-            "line, ask the player to aim at it and tell you what they notice. Do NOT list the "
-            "attributes yourself yet — let them look first. Call it \"this flower\", never a number."
-        ),
+    # No reply to "what's your name?" yet after ~15s.
+    "ask_name_nudge": Beat(
+        say="Can you tell me your name?",
+        scripted_only=True,
     ),
-    # interactive_qa OFF: don't ask, just fly over and notice what it has out loud.
-    "examine_tell": Beat(
-        say="Ooh, come look at this flower! I see {attributes}.",
-        fly_to=("flower", "@id"),
-        improv=(
-            "Fly down to this flower (id {flower_id}) and, like you're noticing it together, point "
-            "out in one short line what you can see: {attributes}. Call it \"this flower\", never a "
-            "number."
-        ),
+    # Sets up the shared goal once the name exchange has settled.
+    "role_intro": Beat(
+        say="You're a bee, just like me! Our goal is to keep the garden colorful by pollinating "
+            "flowers!",
+        scripted_only=True,
     ),
-    # No answer yet — warmly nudge them to look and describe (fires up to MAX_ANSWER_NUDGES).
-    "examine_nudge": Beat(
-        say="Aim right at the flower I'm next to, and tell me what stands out about it!",
-        improv=(
-            "The player still hasn't described the flower. In one short line, warmly nudge them to "
-            "aim at it and tell you what they notice."
-        ),
+    # Names the pattern explicitly — deliberately breaks from this persona's usual "intelligent
+    # novice" restraint (see BIP_V4_PERSONA/NOVICE_RULE), at explicit direction: middle schoolers
+    # already encounter recommender systems everywhere, so naming it up front is the intended design
+    # for this activity specifically.
+    "recommender_intro": Beat(
+        say="This is kind of like a recommender system, actually. Do you know what that means?",
+        scripted_only=True,
     ),
-    # Dart to the most-similar neighbor and notice how alike they are — plant the "why?" as a
-    # question, never as a stated rule.
-    "compare_neighbor": Beat(
-        say="Huh, look at this one right next to it! It has {neighbor_attributes}. Almost the same, "
-            "right? I wonder if that's why they're neighbors.",
-        fly_to=("flower", "@id"),
-        improv=(
-            "Fly to this neighboring flower (id {flower_id}), which has {neighbor_attributes}. In "
-            "one short, surprised line, notice out loud how similar it is to the one you just "
-            "looked at, and wonder aloud if that's why they sit next to each other. Do not state it "
-            "as a rule. Call it \"this one\", never a number."
-        ),
+    # interactive_qa off: state it plainly, no question, no wait.
+    "recommender_intro_no_qa": Beat(
+        say="This is kind of like a recommender system, the kind you see all over the internet!",
+        scripted_only=True,
     ),
-    # Set the challenge: go find something genuinely different.
-    "challenge": Beat(
-        say="Now, can you find me a really different flower? Try {requested}. Aim at it and "
-            "right-click to pick it!",
-        improv=(
-            "Challenge the player, in one short line, to go find a flower that is really different "
-            "from the ones you just looked at — suggest {requested} — and to aim at it and "
-            "right-click to pick it."
-        ),
+    # No reply yet after ~15s.
+    "recommender_nudge": Beat(
+        say="Ever heard of a recommender system before? Take a guess!",
+        scripted_only=True,
     ),
-    # Still hasn't picked — nudge them to choose one.
-    "challenge_nudge": Beat(
-        say="Look around the garden for a flower that's really different, then right-click to pick it!",
-        improv=(
-            "The player still hasn't picked a flower. In one short line, warmly nudge them to find "
-            "a really different flower and right-click it."
-        ),
+    # Round 0 of the search task. Folds in the "did you see that" acknowledgement of the hover
+    # tutorial text screen Java just showed, so it doesn't need its own separate say.
+    "search_task": Beat(
+        say="Did you see that? Let's try and look at some other flowers. Find {requested}, then "
+            "right-click it!",
+        scripted_only=True,
     ),
-    # The payoff: the flower they picked. Land the distance/difference idea as a shared HUNCH the
-    # player is invited to confirm, not a fact Bip already knew.
-    "distance_lesson": Beat(
-        say="Nice pick! And whoa, this one was {distance_desc} from the first, way over here. Do "
-            "you think the really different flowers always end up far apart?",
-        fly_to=("flower", "@id"),
-        improv=(
-            "The player picked this flower (id {flower_id}); compared to the first flower it is "
-            "{distance_desc} and sits far from it. Fly to it and, in one or two short lines, "
-            "wonder OUT LOUD whether really different flowers always end up far apart while similar "
-            "ones sit close — as a curious hunch you just noticed, and ask what the player thinks. "
-            "Do NOT state it as a known rule or mention any system. Call it \"this one\", never a "
-            "number."
-        ),
+    # Rounds 1+ of the search task, when the player DID share their reasoning for the last pick.
+    "search_task_next": Beat(
+        say="Nice! Now find {requested} and right-click it!",
+        scripted_only=True,
+    ),
+    # Rounds 1+ when the player did NOT answer the reflection question — no "Nice!" opener, since
+    # that would falsely imply they'd just explained something.
+    "search_task_next_no_reply": Beat(
+        say="That's okay! Let's find another one — {requested}, then right-click it!",
+        scripted_only=True,
+    ),
+    # Hasn't picked anything in a while — nudge toward the current target.
+    "search_nudge": Beat(
+        say="Still looking? Try to find {requested} and right-click it when you spot it!",
+        scripted_only=True,
+    ),
+    # Right-clicked a flower that matches the current target.
+    "search_success": Beat(
+        say="Nice! That looks perfect. What in the data panel told you this was the right choice?",
+        scripted_only=True,
+    ),
+    # Right-clicked a flower that does NOT match — sends them back to their own data panel rather
+    # than stating the answer. Deliberately an instruction, NOT a question: the ordinary chat
+    # pipeline judges any reply the player types with no visibility into the actual target, so it
+    # would happily agree with a wrong reading ("yep, that sounds right!") even though the pick was
+    # still wrong — asking "what does it show?" invites exactly that contradiction. Two variants so
+    # a retry doesn't repeat verbatim.
+    "search_failure_0": Beat(
+        say="Hmm, not quite. Take another look at the {feature_label} on the data panel, then try "
+            "again!",
+        scripted_only=True,
+    ),
+    "search_failure_1": Beat(
+        say="Let's pause. Check the {feature_label} for that one closely, then give it another "
+            "try!",
+        scripted_only=True,
+    ),
+    # All rounds complete — wrap up. The next-steps instructions are shown as a text screen
+    # alongside this beat (see ObserveFlowersBipState), not spoken.
+    "complete": Beat(
+        say="Perfect, that was great! See you soon!",
+        scripted_only=True,
     ),
 }
 
@@ -277,8 +328,8 @@ def resolve(activity: str, beat: str, features) -> Beat | None:
     if not features.interactive_qa:
         if beat == "why_dead":
             beat = "why_dead_tell"
-        elif beat == "examine":
-            beat = "examine_tell"
+        elif beat == "intro" and activity == "observe":
+            beat = "intro_no_qa"
 
     resolved = table.get(beat)
     if resolved is None:

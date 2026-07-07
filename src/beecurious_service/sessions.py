@@ -118,10 +118,13 @@ class AgentSession:
         if event_type == "agent_tick":
             return self._handle_agent_tick(event)
 
-        # Beat-driven Bip greets via the scripted intro beat, so the game_start LLM call is pure
-        # dead weight — and because every event shares one serialized command channel, that call
-        # would block the scripted intro for several seconds at startup. Skip it entirely.
-        if event_type == "game_start" and self.profile.beat_driven:
+        # Beat-driven Bip greets via the scripted intro beat and says goodbye via the scripted
+        # "complete"/"garden_died" beats, so the game_start/game_end LLM calls are pure dead
+        # weight — and because every event shares one serialized command channel, letting game_end
+        # through produces a SECOND, unplanned farewell line stacked right after the scripted one
+        # (e.g. "Perfect, that was great! See you soon!" immediately followed by an LLM-generated
+        # "See you soon, <name>!"). Skip both entirely.
+        if event_type in ("game_start", "game_end") and self.profile.beat_driven:
             return {"commands": [], "interaction_id": str(uuid4())}
 
         context = payload.get("context", "")
