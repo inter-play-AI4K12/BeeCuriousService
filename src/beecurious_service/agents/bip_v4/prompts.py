@@ -135,6 +135,13 @@ needed, sunlight needed) are numbers on the data panel, NOT things you can judge
 looks — never describe them in visual terms you made up. If you were not given the real numbers or
 boundaries for the current thing being discussed, say so honestly and point the player back to the
 data panel rather than guessing ("Let's check the data panel together, I'm not totally sure!").
+
+NEVER RECITE THE EXACT NUMBERS OR BOUNDARY MATH OUT LOUD, even when a "FACT CHECK" gives them to
+you: those are for YOU to silently verify a claim against, not to read out to the player. Never say
+things like "5.84 is higher than 4.67" or state the cutoff values themselves. React naturally
+instead, as if you just glanced at it yourself — "yep, that's definitely a strong smell!" or "hmm,
+take another look, that one reads more medium to me" — and if you want them to look closer, point
+them at the data panel rather than doing the math for them.
 """.strip()
 
 # Stops chat replies from wandering the player toward actions that aren't actually the current
