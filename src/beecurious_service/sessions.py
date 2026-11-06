@@ -89,6 +89,9 @@ class AgentSession:
     # Scripted lines Bip has spoken since the last LLM call. Injected as prior assistant turns on
     # the next call so the model "remembers" saying them (see _generate / _record_scripted_line).
     scripted_lines_pending: list[str] = field(default_factory=list, repr=False)
+    # Activity of the most recent activity_beat (e.g. "observe", "pollinate", "recommend"); lets
+    # activity-aware profiles change stance per activity within one carried session.
+    current_activity: str | None = None
     lock: Lock = field(default_factory=Lock, repr=False)
 
     @property
@@ -145,7 +148,7 @@ class AgentSession:
         try:
             with self.lock:
                 result = self._generate(
-                    self.profile.build_instructions(event_type, context),
+                    self._instructions(event_type, context),
                     event,
                 )
                 commands = self._issue_commands(result.commands)
@@ -247,7 +250,7 @@ class AgentSession:
         }
         try:
             result = self._generate(
-                self.profile.build_instructions(event["event_type"], ""),
+                self._instructions(event["event_type"], ""),
                 event,
             )
         except Exception:
@@ -272,6 +275,9 @@ class AgentSession:
         beat_name = details.get("beat")
         if not isinstance(activity, str) or not isinstance(beat_name, str):
             return []
+        if activity != "flow":
+            # "flow" lines (portals, menus) sit between stages and don't change Bip's stance.
+            self.current_activity = activity
 
         features = get_features()
         beat = activities.resolve(activity, beat_name, features)
@@ -291,7 +297,7 @@ class AgentSession:
             }
             try:
                 result = self._generate(
-                    self.profile.build_instructions("activity_context", ""),
+                    self._instructions("activity_context", self._snapshot_context()),
                     improv_event,
                 )
             except Exception:
@@ -355,6 +361,32 @@ class AgentSession:
                 return None
             return ["flower", str(int(flower_id))]
         return args
+
+    def _snapshot_context(self) -> str:
+        """Summarize the latest heartbeat so improvised beats can see the live game state."""
+        if not self.snapshots:
+            return ""
+        latest = self.snapshots[-1]
+        lines = [
+            "GAME STATE (latest heartbeat):",
+            f"- Diversity score: {round(latest.get('current_diversity', 0))}",
+        ]
+        flowers = (latest.get("flowers") or {}).get("items") or []
+        for flower in flowers:
+            if not isinstance(flower, dict):
+                continue
+            traits = flower.get("traits") or {}
+            trait_text = ", ".join(
+                f"{name.replace('_', ' ')} {value:.1f}"
+                for name, value in traits.items()
+                if isinstance(value, int | float)
+            )
+            status = "withered" if flower.get("withered") else "alive"
+            lines.append(
+                f"- Flower {flower.get('id')}: {flower.get('color')}, {status}"
+                + (f", {trait_text}" if trait_text else "")
+            )
+        return "\n".join(lines)
 
     def _record_snapshot(self, snapshot: dict[str, Any]) -> None:
         game_tick = snapshot.get("game_tick")
@@ -461,6 +493,13 @@ class AgentSession:
             for sample in samples
             for index in range(3)
         )
+
+    def _instructions(self, event_type: str, context: str) -> str:
+        """Build the profile's instructions, passing the current activity when it wants it."""
+        if self.profile.activity_aware:
+            return self.profile.build_instructions(
+                event_type, context, activity=self.current_activity)
+        return self.profile.build_instructions(event_type, context)
 
     def _generate(self, instructions: str, event: dict[str, Any]):
         """Call the provider, folding any pending scripted lines into the model's memory.

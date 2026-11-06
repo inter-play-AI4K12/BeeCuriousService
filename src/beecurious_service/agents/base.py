@@ -18,6 +18,10 @@ class AgentProfile:
     # game_start/game_end LLM call is redundant. Skipping it also keeps the single command channel
     # free at startup, so the scripted intro fires immediately instead of after a multi-second call.
     beat_driven: bool = False
+    # build_instructions also accepts an ``activity`` keyword (the activity of the most recent
+    # activity_beat), so one profile can change stance per activity without swapping profiles
+    # mid-session — the session carries across activities.
+    activity_aware: bool = False
 
     @property
     def profile_id(self) -> str:

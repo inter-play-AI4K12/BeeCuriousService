@@ -198,6 +198,35 @@ class SessionStoreTest(unittest.TestCase):
         )
         self.assertEqual(telemetry.events, [])
 
+    def test_recommend_beat_switches_bip_v4_chat_to_guide_rules(self) -> None:
+        store = SessionStore(
+            MockAgentProvider(),
+            create_agent_registry(),
+            "bip",
+            "4.0",
+            LokiTelemetry("https://example.test", "test", None),
+        )
+        session = store.create(self._request())
+        beat = self._heartbeat([0, 64, 0], 20)
+        beat["event"]["snapshot"]["game_events"] = [
+            {
+                "event_type": "activity_beat",
+                "game_tick": 19,
+                "details": {"activity": "recommend", "beat": "go_pollinate"},
+            }
+        ]
+
+        session.handle_event(beat)
+        with patch.object(
+            session.provider, "generate", wraps=session.provider.generate
+        ) as generate:
+            session.handle_event(
+                {"event": {"event_type": "chat", "message": "hi"}, "context": ""}
+            )
+
+        self.assertEqual(session.current_activity, "recommend")
+        self.assertIn("GUIDE MODE", generate.call_args.kwargs["instructions"])
+
     @staticmethod
     def _heartbeat(
         position: list[float | int],

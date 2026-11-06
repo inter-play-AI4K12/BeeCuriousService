@@ -8,4 +8,5 @@ BIP_V4_PROFILE = AgentProfile(
     display_name="Bip Buzzley",
     build_instructions=build_instructions,
     beat_driven=True,
+    activity_aware=True,
 )
