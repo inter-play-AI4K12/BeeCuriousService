@@ -4,6 +4,33 @@ Python service that owns Bip's prompt, conversation state, model calls, and comm
 The Fabric mod sends game events and world context to this service, then executes the returned
 Minecraft commands.
 
+## Running the `Son` branch (Base 2)
+
+This branch serves Bip 4.0, who runs the whole BeetrapMC game: the intro, the four tutorial
+stages and the real game. Pair it with the **`Son` branch of BeetrapMC** (its README has the full
+game setup).
+
+```bash
+cp .env.example .env
+python -m pip install -e .
+PYTHONPATH=src python -m beecurious_service
+```
+
+In `.env`, set `BEECURIOUS_AGENT_PROVIDER=openai` and `OPENAI_API_KEY`, and keep
+`BEECURIOUS_DEFAULT_AGENT=bip` with `BEECURIOUS_DEFAULT_AGENT_VERSION=4.0`. With the default `mock`
+provider, Bip's scripted lines still play but his chat replies are placeholders. Keep the service
+running while you play.
+
+### Where Bip's lines live
+
+- `src/beecurious_service/activities.py`: every scripted line, one table per stage (`intro`,
+  `observe`, `pollinate`, `recommend`, `diversify`, `actual`, plus `flow` for portals). The mod
+  only decides *when* a line plays; it sends the line's name and the service sends back the words.
+- `src/beecurious_service/agents/bip_v4/prompts.py`: Bip's persona, his knowledge of the garden,
+  and his stance per stage (teacher buddy, guide, bubble breaker, garden buddy) for chat replies.
+- `tests/test_activities.py` checks every scripted line against the voice rules (16 words or
+  fewer, no long dashes or semicolons, at most one "!", no classroom phrasing).
+
 ## Run locally
 
 The default provider is deterministic and does not require an API key:
@@ -24,7 +51,7 @@ Python-side default without rebuilding Fabric:
 
 ```dotenv
 BEECURIOUS_DEFAULT_AGENT=bip
-BEECURIOUS_DEFAULT_AGENT_VERSION=1.0
+BEECURIOUS_DEFAULT_AGENT_VERSION=4.0
 ```
 
 Fabric includes `game_session_id` and `logging_consent` when it creates a session. Tests or
@@ -40,6 +67,8 @@ Available profiles:
 - `bip@2.0`: full spatially engaged Bip prompt
 - `bip@3.0`: Bip 1.0 plus an in-memory stationary-player check; after one minute
   at the same heartbeat position, Bip suggests exploring
+- `bip@4.0` (default on this branch): beat-driven Bip for the Base 2 game. Scripted lines come
+  from `activities.py`; chat replies see the full game state and change stance per stage
 
 ## OpenAI provider
 
