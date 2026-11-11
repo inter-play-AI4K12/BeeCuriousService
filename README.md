@@ -16,10 +16,25 @@ python -m pip install -e .
 PYTHONPATH=src python -m beecurious_service
 ```
 
-In `.env`, set `BEECURIOUS_AGENT_PROVIDER=openai` and `OPENAI_API_KEY`, and keep
-`BEECURIOUS_DEFAULT_AGENT=bip` with `BEECURIOUS_DEFAULT_AGENT_VERSION=4.0`. With the default `mock`
-provider, Bip's scripted lines still play but his chat replies are placeholders. Keep the service
-running while you play.
+Fill in your own `OPENAI_API_KEY` in `.env`, and keep `BEECURIOUS_DEFAULT_AGENT=bip` with
+`BEECURIOUS_DEFAULT_AGENT_VERSION=4.0`. The example matches the local `son-base2` configuration:
+provider `openai`, model `gpt-6-luna`, port `13161`. Choose a model your account can access.
+For key-free scripted play, set `BEECURIOUS_AGENT_PROVIDER=mock`; chat replies will be placeholders.
+Keep the service running while you play.
+
+On Windows PowerShell, run from this folder:
+
+```powershell
+Copy-Item .env.example .env
+python -m pip install -e .
+$env:PYTHONPATH='src'
+python -m beecurious_service
+```
+
+Pair this with BeetrapMC's `.env.example`, copied to `BeetrapMC/run/.env`; its
+`BEECURIOUS_SERVICE_URL=http://127.0.0.1:13161` must match this service's `BEECURIOUS_PORT`.
+The actual `.env` is ignored by Git. A pull does not update an existing `.env`: compare it with
+the example and restart the service after changes. API keys and other credentials stay local.
 
 ### Where Bip's lines live
 
@@ -39,7 +54,8 @@ The default provider is deterministic and does not require an API key:
 PYTHONPATH=src python3 -m beecurious_service
 ```
 
-The service listens on `http://127.0.0.1:8765`.
+The code default is `http://127.0.0.1:8765`; the Son `.env.example` selects port `13161` to match
+the local Base 2 setup.
 After installing the project, the `beecurious-service` command is also available.
 Configuration is loaded from `BeeCuriousService/.env` when present. Service output is written
 to both the terminal and `logs/beecurious-service.log`.
